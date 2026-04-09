@@ -20,6 +20,8 @@
     group: "{{ claude_user }}"
     mode: '0700'
 
+# adc_credentials_path tilde (~) expands relative to the Ansible controller user's home.
+# If running via sudo, ensure the path is absolute in vars/config.yml.
 - name: Copy ADC credentials from host to VM
   ansible.builtin.copy:
     src: "{{ adc_credentials_path }}"
@@ -37,7 +39,7 @@
     baseurl: "https://packages.cloud.google.com/yum/repos/cloud-sdk-el9-x86_64"
     enabled: true
     gpgcheck: true
-    repo_gpgcheck: false
+    repo_gpgcheck: true
     gpgkey:
       - "https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg"
 
@@ -55,6 +57,7 @@
     name: nodejs
     state: present
 
+# state: latest intentionally upgrades Claude Code on every run
 - name: Install Claude Code globally via npm
   community.general.npm:
     name: "@anthropic-ai/claude-code"
@@ -86,6 +89,8 @@
   loop: "{{ shared_mounts }}"
   when: shared_mounts | length > 0
 
+# state: mounted writes fstab AND immediately mounts. Requires virtiofsd running on host
+# and the VM to have been created with --filesystem virt-install args.
 - name: Add virtiofs entries to /etc/fstab
   ansible.posix.mount:
     path: "{{ item.guest_path }}"
