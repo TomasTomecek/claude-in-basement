@@ -41,11 +41,10 @@ Play 1 (localhost): libvirt_vm role
   → Registers VM IP, adds host to in-memory inventory
 
 Play 2 (vm host): claude_setup role
-  → Installs gcloud CLI from Google's RPM repo
   → Copies ADC credentials from host to VM
-  → Installs Node.js via dnf
-  → Installs Claude Code via npm
-  → Configures GOOGLE_APPLICATION_CREDENTIALS env var
+  → Installs gcloud CLI (el9 RPM repo, libxcrypt-compat + google-cloud-cli)
+  → Installs Node.js and @anthropic-ai/claude-code via npm
+  → Writes Vertex AI env vars to /etc/profile.d/claude_code.sh
 
 playbook.yml: prints SSH command at end (includes -i keys/id_rsa)
 ```
@@ -72,8 +71,8 @@ claude-in-basement/
 │   │   └── templates/
 │   │       └── network.xml.j2    # libvirt network definition (NAT + isolation rules)
 │   └── claude_setup/
-│       ├── tasks/main.yml        # Install gcloud, copy ADC, install Node.js + Claude Code
-│       └── defaults/main.yml     # gcloud version, node version, ADC source path
+│       ├── tasks/main.yml        # Copy ADC, install gcloud + Claude Code, write env vars
+│       └── defaults/main.yml     # ADC source path, GCP project, region
 └── README.md
 ```
 
@@ -105,9 +104,9 @@ shared_mounts: []
 # Path to gcloud ADC credentials on host
 adc_credentials_path: "~/.config/gcloud/application_default_credentials.json"
 
-# Vertex AI / Google Cloud settings
-google_project_id: "my-gcp-project"
-google_cloud_location: "us-east5"
+# Vertex AI / Google Cloud settings (used as ANTHROPIC_VERTEX_PROJECT_ID and CLOUD_ML_REGION)
+google_project_id: "my-gcp-project"   # required
+google_cloud_location: "us-east5"     # default matches Red Hat Vertex AI region
 ```
 
 ### `keys/` (gitignored)
@@ -147,25 +146,26 @@ fedora_image_url: "https://download.fedoraproject.org/pub/fedora/linux/releases/
 
 ### `roles/claude_setup/`
 
-**Purpose:** Provision Claude Code and Vertex AI credentials inside the VM.
+**Purpose:** Provision Claude Code and Vertex AI credentials inside the VM. Self-contained — no external role dependencies.
 
 **Tasks:**
-1. Add Google Cloud SDK RPM repo
-2. Install `google-cloud-cli` via dnf
-3. Install `nodejs` and `npm` via dnf
-4. Install Claude Code globally: `npm install -g @anthropic-ai/claude-code`
-5. Create `~/.config/gcloud/` directory on VM
-6. Copy ADC credentials file from host path (`adc_credentials_path`) to `~/.config/gcloud/application_default_credentials.json` on VM
-7. Add the following exports to `~/.bashrc` and `~/.bash_profile`:
-   - `GOOGLE_APPLICATION_CREDENTIALS=~/.config/gcloud/application_default_credentials.json`
-   - `GOOGLE_CLOUD_PROJECT=<google_project_id>`
-   - `GOOGLE_CLOUD_LOCATION=<google_cloud_location>`
+1. Create `~/.config/gcloud/` directory on VM
+2. Copy ADC credentials file from host (`adc_credentials_path`) to `~/.config/gcloud/application_default_credentials.json` on VM (must happen before gcloud install step, which asserts the file exists)
+3. Add Google Cloud SDK yum repo (el9 baseurl — compatible with Fedora)
+4. Install `libxcrypt-compat` and `google-cloud-cli` via dnf
+5. Install `nodejs` via dnf
+6. Install Claude Code globally via `community.general.npm` (`@anthropic-ai/claude-code`, global: true)
+7. Write `/etc/profile.d/claude_code.sh` with:
+   - `export CLAUDE_CODE_USE_VERTEX=1`
+   - `export CLOUD_ML_REGION={{ google_cloud_location }}`
+   - `export ANTHROPIC_VERTEX_PROJECT_ID={{ google_project_id }}`
 
 **Defaults (`defaults/main.yml`):**
 ```yaml
 claude_user: fedora
-node_package: nodejs
-gcloud_package: google-cloud-cli
+adc_credentials_path: "~/.config/gcloud/application_default_credentials.json"
+google_project_id: ""          # required — must be set in vars/config.yml
+google_cloud_location: "us-east5"
 ```
 
 ---
@@ -227,6 +227,7 @@ Running the playbook a second time against an existing VM is safe and fast.
 ## Error Handling
 
 - Playbook asserts host dependencies (`libvirt`, `virt-install`, `qemu-kvm`, `virtiofsd`) before doing any work — fails fast with a clear message
+- Playbook asserts `google_project_id` is non-empty before starting play 2
 - SSH wait task has a configurable timeout (default 5 minutes) with a meaningful failure message
 - ADC credentials copy task fails explicitly if the source file does not exist on the host
 
@@ -248,6 +249,7 @@ Manual verification steps after provisioning:
 
 - `community.libvirt` — VM and network management
 - `community.crypto` — SSH key pair generation (`openssh_keypair` module)
+- `community.general` — npm module (`community.general.npm`) for Claude Code install
 - `ansible.builtin` — standard modules (file, copy, template, iptables, wait_for, debug)
 
-Install via: `ansible-galaxy collection install community.libvirt community.crypto`
+Install via: `ansible-galaxy collection install community.libvirt community.crypto community.general`
