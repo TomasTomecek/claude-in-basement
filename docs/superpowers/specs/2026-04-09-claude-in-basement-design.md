@@ -104,6 +104,10 @@ shared_mounts: []
 
 # Path to gcloud ADC credentials on host
 adc_credentials_path: "~/.config/gcloud/application_default_credentials.json"
+
+# Vertex AI / Google Cloud settings
+google_project_id: "my-gcp-project"
+google_cloud_location: "us-east5"
 ```
 
 ### `keys/` (gitignored)
@@ -152,7 +156,10 @@ fedora_image_url: "https://download.fedoraproject.org/pub/fedora/linux/releases/
 4. Install Claude Code globally: `npm install -g @anthropic-ai/claude-code`
 5. Create `~/.config/gcloud/` directory on VM
 6. Copy ADC credentials file from host path (`adc_credentials_path`) to `~/.config/gcloud/application_default_credentials.json` on VM
-7. Add `GOOGLE_APPLICATION_CREDENTIALS` export to `~/.bashrc` and `~/.bash_profile`
+7. Add the following exports to `~/.bashrc` and `~/.bash_profile`:
+   - `GOOGLE_APPLICATION_CREDENTIALS=~/.config/gcloud/application_default_credentials.json`
+   - `GOOGLE_CLOUD_PROJECT=<google_project_id>`
+   - `GOOGLE_CLOUD_LOCATION=<google_cloud_location>`
 
 **Defaults (`defaults/main.yml`):**
 ```yaml
