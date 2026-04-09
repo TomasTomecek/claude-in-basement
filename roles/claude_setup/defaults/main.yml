@@ -2,3 +2,4 @@ claude_user: fedora
 adc_credentials_path: "~/.config/gcloud/application_default_credentials.json"
 google_project_id: ""
 google_cloud_location: "us-east5"
+shared_mounts: []
