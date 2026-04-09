@@ -1,0 +1,97 @@
+---
+# ── Pre-flight ─────────────────────────────────────────────────────────────────
+
+- name: Assert google_project_id is configured
+  ansible.builtin.assert:
+    that:
+      - google_project_id | length > 0
+    fail_msg: >
+      google_project_id must be set in vars/config.yml.
+      Set it to your Vertex AI GCP project ID (e.g. itpc-gcp-global-eng-claude).
+
+# ── ADC credentials ────────────────────────────────────────────────────────────
+# Must happen before gcloud install tasks (gcloud checks for this file)
+
+- name: Create gcloud config directory
+  ansible.builtin.file:
+    path: "/home/{{ claude_user }}/.config/gcloud"
+    state: directory
+    owner: "{{ claude_user }}"
+    group: "{{ claude_user }}"
+    mode: '0700'
+
+- name: Copy ADC credentials from host to VM
+  ansible.builtin.copy:
+    src: "{{ adc_credentials_path }}"
+    dest: "/home/{{ claude_user }}/.config/gcloud/application_default_credentials.json"
+    owner: "{{ claude_user }}"
+    group: "{{ claude_user }}"
+    mode: '0600'
+
+# ── Google Cloud CLI ───────────────────────────────────────────────────────────
+
+- name: Add Google Cloud SDK yum repository
+  ansible.builtin.yum_repository:
+    name: google-cloud-sdk
+    description: Google Cloud CLI
+    baseurl: "https://packages.cloud.google.com/yum/repos/cloud-sdk-el9-x86_64"
+    enabled: true
+    gpgcheck: true
+    repo_gpgcheck: false
+    gpgkey:
+      - "https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg"
+
+- name: Install gcloud CLI and dependencies
+  ansible.builtin.dnf:
+    name:
+      - libxcrypt-compat
+      - google-cloud-cli
+    state: present
+
+# ── Node.js and Claude Code ────────────────────────────────────────────────────
+
+- name: Install Node.js
+  ansible.builtin.dnf:
+    name: nodejs
+    state: present
+
+- name: Install Claude Code globally via npm
+  community.general.npm:
+    name: "@anthropic-ai/claude-code"
+    global: true
+    state: latest
+
+# ── Vertex AI environment variables ───────────────────────────────────────────
+
+- name: Write Vertex AI environment variables to profile.d
+  ansible.builtin.copy:
+    dest: /etc/profile.d/claude_code.sh
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      export CLAUDE_CODE_USE_VERTEX=1
+      export CLOUD_ML_REGION={{ google_cloud_location }}
+      export ANTHROPIC_VERTEX_PROJECT_ID={{ google_project_id }}
+
+# ── Shared mount fstab entries ─────────────────────────────────────────────────
+
+- name: Create guest mount point directories
+  ansible.builtin.file:
+    path: "{{ item.guest_path }}"
+    state: directory
+    owner: "{{ claude_user }}"
+    group: "{{ claude_user }}"
+    mode: '0755'
+  loop: "{{ shared_mounts }}"
+  when: shared_mounts | length > 0
+
+- name: Add virtiofs entries to /etc/fstab
+  ansible.posix.mount:
+    path: "{{ item.guest_path }}"
+    src: "mount_tag_{{ loop.index0 }}"
+    fstype: virtiofs
+    opts: defaults
+    state: mounted
+  loop: "{{ shared_mounts }}"
+  when: shared_mounts | length > 0
