@@ -1,0 +1,26 @@
+#!/bin/bash
+# Managed by Ansible — do not edit manually
+# Network isolation hook for {{ vm_network_name }}
+
+NETWORK_NAME="$1"
+ACTION="$2"
+
+[ "$NETWORK_NAME" = "{{ vm_network_name }}" ] && [ "$ACTION" = "started" ] || exit 0
+
+# Idempotent insert: check first, insert at position 1 only if missing
+ipt() {
+    iptables -C "$@" 2>/dev/null || iptables -I "$@"
+}
+
+# Insert in reverse priority order — each goes to position 1, pushing others down.
+# Final order in FORWARD chain:
+#   1. ACCEPT src={{ vm_network_subnet }} dst={{ vm_network_subnet }}  (own subnet, gateway)
+#   2. DROP   src={{ vm_network_subnet }} dst=10.0.0.0/8
+#   3. DROP   src={{ vm_network_subnet }} dst=172.16.0.0/12
+#   4. DROP   src={{ vm_network_subnet }} dst=192.168.0.0/16
+#   5. [libvirt ACCEPT rules for established/related and general forward]
+
+ipt FORWARD -s {{ vm_network_subnet }} -d 192.168.0.0/16 -j DROP
+ipt FORWARD -s {{ vm_network_subnet }} -d 172.16.0.0/12 -j DROP
+ipt FORWARD -s {{ vm_network_subnet }} -d 10.0.0.0/8 -j DROP
+ipt FORWARD -s {{ vm_network_subnet }} -d {{ vm_network_subnet }} -j ACCEPT

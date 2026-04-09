@@ -1,0 +1,12 @@
+vm_name: claude-basement
+vm_vcpus: 2
+vm_ram_mb: 4096
+vm_disk_gb: 20
+vm_network_name: claude-net
+vm_network_subnet: "192.168.150.0/24"
+vm_network_gateway: "192.168.150.1"
+vm_network_netmask: "255.255.255.0"
+vm_network_dhcp_start: "192.168.150.100"
+vm_network_dhcp_end: "192.168.150.200"
+fedora_image_url: "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-43.qcow2"
+fedora_image_dest: "/var/lib/libvirt/images/Fedora-Cloud-Base-Generic.x86_64-43.qcow2"

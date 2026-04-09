@@ -1,0 +1,9 @@
+#cloud-config
+hostname: {{ vm_name }}
+users:
+  - name: fedora
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - {{ ssh_public_key }}
