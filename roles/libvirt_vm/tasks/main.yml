@@ -57,8 +57,7 @@
     /var/lib/libvirt/images/cloud-init-{{ vm_name }}.iso
     /tmp/user-data-{{ vm_name }}
     /tmp/meta-data-{{ vm_name }}
-  args:
-    creates: "/var/lib/libvirt/images/cloud-init-{{ vm_name }}.iso"
+  when: not vm_disk.stat.exists
 
 # ── libvirt network ────────────────────────────────────────────────────────────
 
@@ -121,7 +120,6 @@
       {% for mount in shared_mounts %}
       --filesystem source.dir={{ mount.host_path }},target.dir=mount_tag_{{ loop.index0 }},driver.type=virtiofs
       {% endfor %}
-      {% else %}
       {% endif %}
 
 - name: Create VM with virt-install
@@ -133,7 +131,7 @@
     --disk path=/var/lib/libvirt/images/{{ vm_name }}.qcow2,format=qcow2
     --disk path=/var/lib/libvirt/images/cloud-init-{{ vm_name }}.iso,device=cdrom
     --network network={{ vm_network_name }}
-    --os-variant fedora38
+    --os-variant {{ vm_os_variant }}
     --import
     --noautoconsole
     {{ virtiofs_args }}
