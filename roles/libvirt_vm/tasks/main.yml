@@ -1,0 +1,171 @@
+---
+# ── Pre-flight checks ──────────────────────────────────────────────────────────
+
+- name: Assert required host packages are installed
+  ansible.builtin.command: rpm -q {{ item }}
+  loop:
+    - virt-install
+    - libvirt
+    - qemu-kvm
+    - python3-libvirt
+    - cloud-utils
+    - virtiofsd
+  changed_when: false
+
+# ── Fedora cloud image ─────────────────────────────────────────────────────────
+
+- name: Download Fedora 43 Cloud Base image
+  ansible.builtin.get_url:
+    url: "{{ fedora_image_url }}"
+    dest: "{{ fedora_image_dest }}"
+    mode: '0644'
+
+- name: Check if VM disk image already exists
+  ansible.builtin.stat:
+    path: "/var/lib/libvirt/images/{{ vm_name }}.qcow2"
+  register: vm_disk
+
+- name: Create VM disk as thin overlay on base image
+  ansible.builtin.command: >
+    qemu-img create -f qcow2 -F qcow2
+    -b {{ fedora_image_dest }}
+    /var/lib/libvirt/images/{{ vm_name }}.qcow2
+    {{ vm_disk_gb }}G
+  when: not vm_disk.stat.exists
+
+# ── cloud-init ISO ─────────────────────────────────────────────────────────────
+
+- name: Read SSH public key
+  ansible.builtin.set_fact:
+    ssh_public_key: "{{ lookup('file', playbook_dir + '/keys/id_rsa.pub') }}"
+
+- name: Create cloud-init user-data
+  ansible.builtin.template:
+    src: user-data.j2
+    dest: "/tmp/user-data-{{ vm_name }}"
+    mode: '0600'
+
+- name: Create cloud-init meta-data
+  ansible.builtin.template:
+    src: meta-data.j2
+    dest: "/tmp/meta-data-{{ vm_name }}"
+    mode: '0644'
+
+- name: Create cloud-init ISO
+  ansible.builtin.command: >
+    cloud-localds
+    /var/lib/libvirt/images/cloud-init-{{ vm_name }}.iso
+    /tmp/user-data-{{ vm_name }}
+    /tmp/meta-data-{{ vm_name }}
+  args:
+    creates: "/var/lib/libvirt/images/cloud-init-{{ vm_name }}.iso"
+
+# ── libvirt network ────────────────────────────────────────────────────────────
+
+- name: Check if libvirt network exists
+  ansible.builtin.command: virsh net-info {{ vm_network_name }}
+  register: net_exists
+  failed_when: false
+  changed_when: false
+
+- name: Define libvirt NAT network
+  community.libvirt.virt_net:
+    name: "{{ vm_network_name }}"
+    xml: "{{ lookup('template', 'network.xml.j2') }}"
+    state: present
+  when: net_exists.rc != 0
+
+- name: Start libvirt network
+  community.libvirt.virt_net:
+    name: "{{ vm_network_name }}"
+    state: active
+
+- name: Enable network autostart
+  community.libvirt.virt_net:
+    name: "{{ vm_network_name }}"
+    autostart: true
+
+# ── Network isolation hook ─────────────────────────────────────────────────────
+
+- name: Ensure libvirt hooks directory exists
+  ansible.builtin.file:
+    path: /etc/libvirt/hooks
+    state: directory
+    mode: '0755'
+
+- name: Deploy network isolation hook
+  ansible.builtin.template:
+    src: network_hook.sh.j2
+    dest: /etc/libvirt/hooks/network
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Apply isolation rules now (simulate network started event)
+  ansible.builtin.command: /etc/libvirt/hooks/network {{ vm_network_name }} started
+  changed_when: false
+
+# ── VM creation ────────────────────────────────────────────────────────────────
+
+- name: Check if VM already exists
+  ansible.builtin.command: virsh dominfo {{ vm_name }}
+  register: vm_exists
+  failed_when: false
+  changed_when: false
+
+- name: Build virtiofs args for shared mounts
+  ansible.builtin.set_fact:
+    virtiofs_args: >-
+      {% if shared_mounts | length > 0 %}
+      --memorybacking source.type=memfd,access.mode=shared
+      {% for mount in shared_mounts %}
+      --filesystem source.dir={{ mount.host_path }},target.dir=mount_tag_{{ loop.index0 }},driver.type=virtiofs
+      {% endfor %}
+      {% else %}
+      {% endif %}
+
+- name: Create VM with virt-install
+  ansible.builtin.command: >-
+    virt-install
+    --name {{ vm_name }}
+    --ram {{ vm_ram_mb }}
+    --vcpus {{ vm_vcpus }}
+    --disk path=/var/lib/libvirt/images/{{ vm_name }}.qcow2,format=qcow2
+    --disk path=/var/lib/libvirt/images/cloud-init-{{ vm_name }}.iso,device=cdrom
+    --network network={{ vm_network_name }}
+    --os-variant fedora38
+    --import
+    --noautoconsole
+    {{ virtiofs_args }}
+  when: vm_exists.rc != 0
+
+# ── Wait for VM and discover IP ────────────────────────────────────────────────
+
+- name: Wait for VM to acquire DHCP lease
+  ansible.builtin.command: virsh domifaddr {{ vm_name }} --source lease
+  register: vm_ip_result
+  until: vm_ip_result.stdout | regex_search('\d+\.\d+\.\d+\.\d+')
+  retries: 30
+  delay: 5
+  changed_when: false
+
+- name: Extract VM IP address
+  ansible.builtin.set_fact:
+    vm_ip: "{{ vm_ip_result.stdout | regex_search('(\\d+\\.\\d+\\.\\d+\\.\\d+)') }}"
+
+- name: Wait for SSH port to open
+  ansible.builtin.wait_for:
+    host: "{{ vm_ip }}"
+    port: 22
+    timeout: 300
+
+# ── Register VM in inventory ───────────────────────────────────────────────────
+
+- name: Add VM to in-memory inventory
+  ansible.builtin.add_host:
+    name: "{{ vm_ip }}"
+    groups: vm
+    ansible_user: fedora
+    ansible_ssh_private_key_file: "{{ playbook_dir }}/keys/id_rsa"
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    vm_ip: "{{ vm_ip }}"
