@@ -1,0 +1,15 @@
+# Shared mounts: list of {host_path, guest_path} pairs
+# Leave empty to disable shared mounts
+shared_mounts: []
+# Example:
+# shared_mounts:
+#   - host_path: /home/user/projects
+#     guest_path: /home/fedora/projects
+
+# Path to gcloud ADC credentials on host
+adc_credentials_path: "~/.config/gcloud/application_default_credentials.json"
+
+# Vertex AI / Google Cloud settings
+# google_project_id is required — set it before running
+google_project_id: ""
+google_cloud_location: "us-east5"
