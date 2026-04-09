@@ -1,0 +1,37 @@
+---
+- name: Provision libvirt VM
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+  vars_files:
+    - vars/config.yml
+  pre_tasks:
+    - name: Create keys directory
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/keys"
+        state: directory
+        mode: '0700'
+      become: false
+
+    - name: Generate SSH key pair (runs as invoking user, not root)
+      community.crypto.openssh_keypair:
+        path: "{{ playbook_dir }}/keys/id_rsa"
+        type: rsa
+        size: 4096
+      become: false
+  roles:
+    - libvirt_vm
+
+- name: Configure VM with Claude Code and Vertex AI
+  hosts: vm
+  gather_facts: false
+  become: true
+  vars_files:
+    - vars/config.yml
+  roles:
+    - claude_setup
+  post_tasks:
+    - name: Print SSH access command
+      ansible.builtin.debug:
+        msg: "Connect to your Claude VM: ssh -i {{ playbook_dir }}/keys/id_rsa fedora@{{ inventory_hostname }}"
