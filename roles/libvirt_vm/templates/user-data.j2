@@ -1,5 +1,6 @@
 #cloud-config
 hostname: {{ vm_name }}
+manage_etc_hosts: true
 users:
   - name: fedora
     sudo: ALL=(ALL) NOPASSWD:ALL

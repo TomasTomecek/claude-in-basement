@@ -5,7 +5,7 @@
       <port start='1024' end='65535'/>
     </nat>
   </forward>
-  <bridge name='virbr-claude' stp='on' delay='0'/>
+  <bridge name='{{ vm_network_bridge }}' stp='on' delay='0'/>
   <ip address='{{ vm_network_gateway }}' netmask='{{ vm_network_netmask }}'>
     <dhcp>
       <range start='{{ vm_network_dhcp_start }}' end='{{ vm_network_dhcp_end }}'/>
