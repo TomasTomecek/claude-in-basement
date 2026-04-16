@@ -7,23 +7,40 @@
     - virt-install
     - libvirt
     - qemu-kvm
-    - python3-libvirt
     - cloud-utils
     - virtiofsd
   changed_when: false
 
+# ── libvirt daemon ─────────────────────────────────────────────────────────────
+
+- name: Ensure libvirtd is running
+  ansible.builtin.service:
+    name: libvirtd
+    state: started
+    enabled: true
+  become: true
+
 # ── Fedora cloud image ─────────────────────────────────────────────────────────
+
+- name: Check if Fedora cloud image already exists
+  ansible.builtin.stat:
+    path: "{{ fedora_image_dest }}"
+  register: fedora_image
+  become: true
 
 - name: Download Fedora 43 Cloud Base image
   ansible.builtin.get_url:
     url: "{{ fedora_image_url }}"
     dest: "{{ fedora_image_dest }}"
     mode: '0644'
+  when: not fedora_image.stat.exists
+  become: true
 
 - name: Check if VM disk image already exists
   ansible.builtin.stat:
     path: "/var/lib/libvirt/images/{{ vm_name }}.qcow2"
   register: vm_disk
+  become: true
 
 - name: Create VM disk as thin overlay on base image
   ansible.builtin.command: >
@@ -32,6 +49,7 @@
     /var/lib/libvirt/images/{{ vm_name }}.qcow2
     {{ vm_disk_gb }}G
   when: not vm_disk.stat.exists
+  become: true
 
 # ── cloud-init ISO ─────────────────────────────────────────────────────────────
 
@@ -39,6 +57,7 @@
   ansible.builtin.stat:
     path: "/var/lib/libvirt/images/cloud-init-{{ vm_name }}.iso"
   register: cloud_init_iso
+  become: true
 
 - name: Read SSH public key
   ansible.builtin.set_fact:
@@ -63,31 +82,40 @@
     /tmp/user-data-{{ vm_name }}
     /tmp/meta-data-{{ vm_name }}
   when: not cloud_init_iso.stat.exists
+  become: true
 
 # ── libvirt network ────────────────────────────────────────────────────────────
 
 - name: Check if libvirt network exists
-  ansible.builtin.command: virsh net-info {{ vm_network_name }}
-  register: net_exists
+  ansible.builtin.command: virsh --connect qemu:///system net-info {{ vm_network_name }}
+  register: net_info
   failed_when: false
   changed_when: false
+  become: true
+
+- name: Write network XML definition
+  ansible.builtin.template:
+    src: network.xml.j2
+    dest: "/tmp/network-{{ vm_network_name }}.xml"
+    mode: '0644'
+  when: net_info.rc != 0
 
 - name: Define libvirt NAT network
-  community.libvirt.virt_net:
-    name: "{{ vm_network_name }}"
-    xml: "{{ lookup('template', 'network.xml.j2') }}"
-    state: present
-  when: net_exists.rc != 0
+  ansible.builtin.command: virsh --connect qemu:///system net-define /tmp/network-{{ vm_network_name }}.xml
+  when: net_info.rc != 0
+  become: true
 
 - name: Start libvirt network
-  community.libvirt.virt_net:
-    name: "{{ vm_network_name }}"
-    state: active
+  ansible.builtin.command: virsh --connect qemu:///system net-start {{ vm_network_name }}
+  register: net_start_result
+  failed_when: net_start_result.rc != 0 and 'already active' not in net_start_result.stderr
+  changed_when: net_start_result.rc == 0
+  become: true
 
 - name: Enable network autostart
-  community.libvirt.virt_net:
-    name: "{{ vm_network_name }}"
-    autostart: true
+  ansible.builtin.command: virsh --connect qemu:///system net-autostart {{ vm_network_name }}
+  changed_when: false
+  become: true
 
 # ── Network isolation hook ─────────────────────────────────────────────────────
 
@@ -96,6 +124,7 @@
     path: /etc/libvirt/hooks
     state: directory
     mode: '0755'
+  become: true
 
 - name: Deploy network isolation hook
   ansible.builtin.template:
@@ -104,18 +133,21 @@
     mode: '0755'
     owner: root
     group: root
+  become: true
 
 - name: Apply isolation rules now (simulate network started event)
   ansible.builtin.command: /etc/libvirt/hooks/network {{ vm_network_name }} started
   changed_when: false
+  become: true
 
 # ── VM creation ────────────────────────────────────────────────────────────────
 
 - name: Check if VM already exists
-  ansible.builtin.command: virsh dominfo {{ vm_name }}
+  ansible.builtin.command: virsh --connect qemu:///system dominfo {{ vm_name }}
   register: vm_exists
   failed_when: false
   changed_when: false
+  become: true
 
 - name: Build virtiofs args for shared mounts
   ansible.builtin.set_fact:
@@ -132,6 +164,7 @@
 - name: Create VM with virt-install
   ansible.builtin.command: >-
     virt-install
+    --connect qemu:///system
     --name {{ vm_name }}
     --ram {{ vm_ram_mb }}
     --vcpus {{ vm_vcpus }}
@@ -143,16 +176,18 @@
     --noautoconsole
     {{ virtiofs_args }}
   when: vm_exists.rc != 0
+  become: true
 
 # ── Wait for VM and discover IP ────────────────────────────────────────────────
 
 - name: Wait for VM to acquire DHCP lease
-  ansible.builtin.command: virsh domifaddr {{ vm_name }} --source lease
+  ansible.builtin.command: virsh --connect qemu:///system domifaddr {{ vm_name }} --source lease
   register: vm_ip_result
   until: vm_ip_result.stdout | regex_search('\d+\.\d+\.\d+\.\d+')
   retries: 30
   delay: 5
   changed_when: false
+  become: true
 
 - name: Extract VM IP address
   ansible.builtin.set_fact:

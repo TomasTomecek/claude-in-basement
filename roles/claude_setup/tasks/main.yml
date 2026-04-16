@@ -42,6 +42,7 @@
     repo_gpgcheck: true
     gpgkey:
       - "https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg"
+  become: true
 
 - name: Install gcloud CLI and dependencies
   ansible.builtin.dnf:
@@ -49,6 +50,7 @@
       - libxcrypt-compat
       - google-cloud-cli
     state: present
+  become: true
 
 # ── Node.js and Claude Code ────────────────────────────────────────────────────
 
@@ -56,6 +58,7 @@
   ansible.builtin.dnf:
     name: nodejs
     state: present
+  become: true
 
 # state: latest intentionally upgrades Claude Code on every run
 - name: Install Claude Code globally via npm
@@ -63,6 +66,7 @@
     name: "@anthropic-ai/claude-code"
     global: true
     state: latest
+  become: true
 
 # ── Vertex AI environment variables ───────────────────────────────────────────
 
@@ -76,6 +80,7 @@
       export CLAUDE_CODE_USE_VERTEX=1
       export CLOUD_ML_REGION={{ google_cloud_location }}
       export ANTHROPIC_VERTEX_PROJECT_ID={{ google_project_id }}
+  become: true
 
 # ── Shared mount fstab entries ─────────────────────────────────────────────────
 
@@ -88,6 +93,7 @@
     mode: '0755'
   loop: "{{ shared_mounts }}"
   when: shared_mounts | length > 0
+  become: true
 
 # state: mounted writes fstab AND immediately mounts. Requires virtiofsd running on host
 # and the VM to have been created with --filesystem virt-install args.
@@ -100,3 +106,4 @@
     state: mounted
   loop: "{{ shared_mounts }}"
   when: shared_mounts | length > 0
+  become: true

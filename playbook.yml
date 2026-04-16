@@ -2,7 +2,6 @@
 - name: Provision libvirt VM
   hosts: localhost
   connection: local
-  become: true
   gather_facts: true
   vars_files:
     - vars/config.yml
@@ -26,7 +25,6 @@
 - name: Configure VM with Claude Code and Vertex AI
   hosts: vm
   gather_facts: false
-  become: true
   vars_files:
     - vars/config.yml
   roles:
