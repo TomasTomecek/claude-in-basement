@@ -98,7 +98,7 @@ adc_credentials_path: "~/.config/gcloud/application_default_credentials.json"
 # Vertex AI / Google Cloud settings
 # google_project_id is required — set it before running
 google_project_id: ""
-google_cloud_location: "us-east5"
+google_cloud_location: "global"
 ```
 
 - [ ] **Step 6: Install Ansible collections**
@@ -459,7 +459,7 @@ mkdir -p roles/claude_setup/{defaults,tasks}
 claude_user: fedora
 adc_credentials_path: "~/.config/gcloud/application_default_credentials.json"
 google_project_id: ""
-google_cloud_location: "us-east5"
+google_cloud_location: "global"
 ```
 
 - [ ] **Step 3: Create `roles/claude_setup/tasks/main.yml`**

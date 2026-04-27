@@ -106,7 +106,7 @@ adc_credentials_path: "~/.config/gcloud/application_default_credentials.json"
 
 # Vertex AI / Google Cloud settings (used as ANTHROPIC_VERTEX_PROJECT_ID and CLOUD_ML_REGION)
 google_project_id: "my-gcp-project"   # required
-google_cloud_location: "us-east5"     # default matches Red Hat Vertex AI region
+google_cloud_location: "global"     # default matches Red Hat Vertex AI region
 ```
 
 ### `keys/` (gitignored)
@@ -165,7 +165,7 @@ fedora_image_url: "https://download.fedoraproject.org/pub/fedora/linux/releases/
 claude_user: fedora
 adc_credentials_path: "~/.config/gcloud/application_default_credentials.json"
 google_project_id: ""          # required — must be set in vars/config.yml
-google_cloud_location: "us-east5"
+google_cloud_location: "global"
 ```
 
 ---
