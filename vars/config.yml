@@ -12,4 +12,4 @@ adc_credentials_path: "~/.config/gcloud/application_default_credentials.json"
 # Vertex AI / Google Cloud settings
 # google_project_id is required — set it before running
 google_project_id: ""
-google_cloud_location: "us-east5"
+google_cloud_location: "global"

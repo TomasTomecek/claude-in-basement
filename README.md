@@ -38,8 +38,8 @@ Edit `vars/config.yml` before running:
 # Required: your Vertex AI GCP project ID
 google_project_id: "itpc-gcp-global-eng-claude"
 
-# Optional: Vertex AI region (default: us-east5)
-google_cloud_location: "us-east5"
+# Optional: Vertex AI region (default: global)
+google_cloud_location: "global"
 
 # Optional: path to your gcloud ADC credentials on the host
 # Run 'gcloud auth application-default login' first if this doesn't exist
