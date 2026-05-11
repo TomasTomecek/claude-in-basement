@@ -39,7 +39,7 @@
     baseurl: "https://packages.cloud.google.com/yum/repos/cloud-sdk-el9-x86_64"
     enabled: true
     gpgcheck: true
-    repo_gpgcheck: true
+    repo_gpgcheck: false
     gpgkey:
       - "https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg"
   become: true
